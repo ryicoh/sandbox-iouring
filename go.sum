@@ -1,0 +1,5 @@
+github.com/royalcat/iouring-go v0.0.0-20240925200811-286062ac1b23 h1:3yOlLKYd6iSGkRUOCPuBQibjjvZyrGB/4sm0fh3nNuQ=
+github.com/royalcat/iouring-go v0.0.0-20240925200811-286062ac1b23/go.mod h1:LEzdaZarZ5aqROlLIwJ4P7h3+4o71008fSy6wpaEB+s=
+golang.org/x/sys v0.0.0-20200923182605-d9f96fdee20d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.36.0 h1:KVRy2GtZBrk1cBYA7MKu5bEZFxQk4NIDV6RLVcC8o0k=
+golang.org/x/sys v0.36.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
