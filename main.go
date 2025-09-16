@@ -3,14 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
-	"sync"
 	"syscall"
 	"time"
-
-	"github.com/iceber/iouring-go"
 )
 
-const entries uint = 128
 const blockSize uint64 = 1024 * 1024 // 1MB
 
 func main() {
@@ -20,18 +16,12 @@ func main() {
 		return
 	}
 
-	// new IOURing
-	iour, err := iouring.New(entries)
-	if err != nil {
-		panic(fmt.Sprintf("new IOURing error: %v", err))
-	}
-	defer iour.Close()
-
 	fmt.Printf("open src file: %s\n", os.Args[1])
 	var srcBytes []byte
 	var size uint64
 	var sizeMB float64
 	{
+		var err error
 		srcBytes, err = os.ReadFile(os.Args[1])
 		if err != nil {
 			fmt.Printf("Open src file failed: %v\n", err)
@@ -54,43 +44,22 @@ func main() {
 	}
 	defer dest.Close()
 
-	// register files
-	if err := iour.RegisterFile(dest); err != nil {
-		panic(err)
-	}
-
 	start := time.Now()
 
-	fmt.Printf("write requests\n")
+	fmt.Println("write data to dest file")
 	{
 		times := int(size/blockSize + 1)
-		var wg sync.WaitGroup
-		wg.Add(times)
-
-		ch := make(chan iouring.Result, entries)
-		go func() {
-			defer close(ch)
-			for result := range ch {
-				if err := result.Err(); err != nil {
-					panic(err)
-				}
-				wg.Done()
-			}
-		}()
-
-		fmt.Printf("submit requests\n")
 		for i := range times {
 			offset := uint64(i) * blockSize
 			readSize := min(size-offset, blockSize)
 
 			b := srcBytes[offset : offset+readSize]
-			prepRequest := iouring.Pwrite(int(dest.Fd()), b, offset)
-			if _, err := iour.SubmitRequest(prepRequest, ch); err != nil {
-				panic(err)
+			_, err := dest.Write(b)
+			if err != nil {
+				fmt.Printf("write failed: %v\n", err)
+				return
 			}
 		}
-
-		wg.Wait()
 	}
 
 	elapsed := time.Since(start)
