@@ -9,13 +9,19 @@ A Go-based disk I/O benchmark tool that uses io_uring for high-performance async
 $ make generate-32gb
 
 # Run the benchmark
-$ go run ./main.go ./input_32G.bin output_32G.bin
+$ make run
+go run ./main.go ./input_32G.bin output_32G.bin
 open src file: ./input_32G.bin
 create dest file: output_32G.bin
+numBatches: 512
 write requests
 submit requests
-byte per second: 2904.870204 MB/s
-elapsed: 11.280366315s
+wait for requests to complete
+byte per second: 4166.654410 MB/s
+elapsed: 7.864343133s
+
+# Check the output file
+$ make checksum
 ```
 
 The benchmark will output the write speed in MB/s and the total elapsed time.

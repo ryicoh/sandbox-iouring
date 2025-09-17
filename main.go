@@ -10,7 +10,7 @@ import (
 	"github.com/iceber/iouring-go"
 )
 
-const entries uint = 128
+const entries uint = 64
 const blockSize uint64 = 1024 * 1024 // 1MB
 
 func main() {
@@ -21,7 +21,8 @@ func main() {
 	}
 
 	// new IOURing
-	iour, err := iouring.New(entries)
+	// +1 for the last fsync request
+	iour, err := iouring.New(entries + 1)
 	if err != nil {
 		panic(fmt.Sprintf("new IOURing error: %v", err))
 	}
@@ -44,6 +45,10 @@ func main() {
 		}
 		size = uint64(stat.Size())
 		sizeMB = float64(size) / 1024 / 1024
+
+		if (size % blockSize) != 0 {
+			panic("size is not a multiple of blockSize")
+		}
 	}
 
 	fmt.Printf("create dest file: %s\n", os.Args[2])
@@ -54,44 +59,68 @@ func main() {
 	}
 	defer dest.Close()
 
+	fd := int(dest.Fd())
+
 	// register files
 	if err := iour.RegisterFile(dest); err != nil {
 		panic(err)
 	}
 
-	start := time.Now()
+	numBlocks := int(size / blockSize)
+	numBatches := int(numBlocks / int(entries))
+	fmt.Printf("numBatches: %d\n", numBatches)
 
+	ch := make(chan iouring.Result, entries)
 	fmt.Printf("write requests\n")
-	{
-		times := int(size/blockSize + 1)
-		var wg sync.WaitGroup
-		wg.Add(times)
+	var wg sync.WaitGroup
 
-		ch := make(chan iouring.Result, entries)
+	{
+		wg.Add(numBlocks)
+
+		// add numBatches for the last fsync request
+		wg.Add(numBatches)
+
 		go func() {
 			defer close(ch)
-			for result := range ch {
+			for range numBlocks + numBatches {
+				result := <-ch
 				if err := result.Err(); err != nil {
 					panic(err)
 				}
+				// fmt.Printf("batch %d done\n", batch)
 				wg.Done()
 			}
 		}()
+	}
 
+	start := time.Now()
+
+	{
 		fmt.Printf("submit requests\n")
-		for i := range times {
-			offset := uint64(i) * blockSize
-			readSize := min(size-offset, blockSize)
+		for batch := range numBatches {
+			// +1 for the last fsync request
+			prepRequests := make([]iouring.PrepRequest, entries+1)
+			batchOffset := uint64(batch) * blockSize * uint64(entries)
 
-			b := srcBytes[offset : offset+readSize]
-			prepRequest := iouring.Pwrite(int(dest.Fd()), b, offset)
-			if _, err := iour.SubmitRequest(prepRequest, ch); err != nil {
+			for entry := range entries {
+				offset := batchOffset + uint64(entry)*blockSize
+				readSize := min(size-offset, blockSize)
+
+				b := srcBytes[offset : offset+readSize]
+				prepRequests[entry] = iouring.Pwrite(fd, b, offset)
+			}
+
+			prepRequests[entries] = iouring.Fsync(fd)
+
+			if _, err := iour.SubmitRequests(prepRequests, ch); err != nil {
 				panic(err)
 			}
+			// fmt.Printf("batch %d submitted\n", batch)
 		}
-
-		wg.Wait()
 	}
+
+	fmt.Printf("wait for requests to complete\n")
+	wg.Wait()
 
 	elapsed := time.Since(start)
 	bytePerSecond := sizeMB / elapsed.Seconds()
